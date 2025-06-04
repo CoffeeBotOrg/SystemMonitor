@@ -4,7 +4,7 @@ import webhooks from './webhooks.json' assert { type: 'json' };
 
 const THRESHOLDS = {
     CPU_PERCENT: 70,
-    MEMORY_PERCENT: 0  
+    MEMORY_PERCENT: 70  
 };
 
 const COLORS = {
