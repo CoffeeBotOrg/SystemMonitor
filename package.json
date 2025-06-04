@@ -1,9 +1,11 @@
 {
-  "name": "systemmonitor",
+  "name": "system-monitor",
   "version": "1.0.0",
+  "description": "Docker container monitoring tool",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
   "repository": {
     "type": "git",
@@ -16,8 +18,7 @@
     "url": "https://github.com/CoffeeBotOrg/SystemMonitor/issues"
   },
   "homepage": "https://github.com/CoffeeBotOrg/SystemMonitor#readme",
-  "description": "",
   "dependencies": {
-    "dockerode": "^4.0.6"
+    "dockerode": "^3.3.5"
   }
 }
