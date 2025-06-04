@@ -1,12 +1,12 @@
 import Docker from 'dockerode';
+import fetch from 'node-fetch';
+import webhooks from './webhooks.json' assert { type: 'json' };
 
-// Alert thresholds
 const THRESHOLDS = {
-    CPU_PERCENT: 0,    // Alert if CPU usage is above 80%
-    MEMORY_PERCENT: 85  // Alert if memory usage is above 85%
+    CPU_PERCENT: 70,
+    MEMORY_PERCENT: 0  
 };
 
-// ANSI color codes for console output
 const COLORS = {
     RED: '\x1b[31m',
     YELLOW: '\x1b[33m',
@@ -14,9 +14,43 @@ const COLORS = {
     RESET: '\x1b[0m'
 };
 
+const alertCooldowns = new Map();
+const COOLDOWN_PERIOD = 5 * 60 * 1000; 
+
 const docker = new Docker();
 const wait = async (ms) => {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function sendWebhookAlert(message, color = 0xFF0000) {
+    try {
+        const webhookUrls = webhooks.webhooks.map(webhook => Object.values(webhook)[0]);
+        
+        const embed = {
+            title: "Docker Container Alert",
+            description: message,
+            color: color,
+            timestamp: new Date().toISOString()
+        };
+
+        const payload = {
+            embeds: [embed]
+        };
+        //send to all webhooks inside webhooks.json
+        const promises = webhookUrls.map(url =>
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
+            })
+        );
+
+        await Promise.all(promises);
+    } catch (error) {
+        console.error('Error sending webhook:', error);
+    }
 }
 
 async function getRunningContainers() {
@@ -30,17 +64,31 @@ async function getRunningContainers() {
         }));
     } catch (error) {
         console.error('Error getting container list:', error);
+        await sendWebhookAlert(`🚨 Error getting container list: ${error.message}`, 0xFF0000);
         return [];
     }
 }
 
 async function handleError(error) {
     console.error('Error:', error.message);
+    await sendWebhookAlert(`🚨 Error: ${error.message}`, 0xFF0000);
 }
 
 function formatBytes(bytes) {
     const mb = bytes / (1024 * 1024);
     return mb.toFixed(2);
+}
+
+function canSendAlert(containerName, alertType) {
+    const key = `${containerName}-${alertType}`;
+    const lastAlert = alertCooldowns.get(key);
+    const now = Date.now();
+
+    if (!lastAlert || (now - lastAlert) > COOLDOWN_PERIOD) {
+        alertCooldowns.set(key, now);
+        return true;
+    }
+    return false;
 }
 
 async function getStats(containerId) {
@@ -62,7 +110,6 @@ async function getStats(containerId) {
         const containerInfo = await container.inspect();
         const containerName = containerInfo.Name.replace('/', '');
 
-        // Determine status colors and create alerts
         const cpuColor = cpuPercent > THRESHOLDS.CPU_PERCENT ? COLORS.RED : COLORS.GREEN;
         const memColor = memoryPercent > THRESHOLDS.MEMORY_PERCENT ? COLORS.RED : COLORS.GREEN;
 
@@ -70,12 +117,15 @@ async function getStats(containerId) {
         console.log(`CPU Usage: ${cpuColor}${cpuPercent.toFixed(2)}%${COLORS.RESET}`);
         console.log(`Memory Usage: ${memColor}${formatBytes(memoryUsage)} MB (${memoryPercent.toFixed(2)}%)${COLORS.RESET}`);
 
-        // Alert on high resource usage
-        if (cpuPercent > THRESHOLDS.CPU_PERCENT) {
+        if (cpuPercent > THRESHOLDS.CPU_PERCENT && canSendAlert(containerName, 'cpu')) {
+            const message = `🔥 High CPU Alert!\nContainer: ${containerName}\nCPU Usage: ${cpuPercent.toFixed(2)}%`;
             console.log(`${COLORS.RED}⚠ ALERT: High CPU usage detected for ${containerName}!${COLORS.RESET}`);
+            await sendWebhookAlert(message, 0xFFA500);
         }
-        if (memoryPercent > THRESHOLDS.MEMORY_PERCENT) {
+        if (memoryPercent > THRESHOLDS.MEMORY_PERCENT && canSendAlert(containerName, 'memory')) {
+            const message = `💾 High Memory Alert!\nContainer: ${containerName}\nMemory Usage: ${formatBytes(memoryUsage)} MB (${memoryPercent.toFixed(2)}%)`;
             console.log(`${COLORS.RED}⚠ ALERT: High memory usage detected for ${containerName}!${COLORS.RESET}`);
+            await sendWebhookAlert(message, 0xFFA500);
         }
     } catch (error) {
         handleError(error);
@@ -88,8 +138,9 @@ async function main() {
         console.log(`CPU Alert Threshold: ${THRESHOLDS.CPU_PERCENT}%`);
         console.log(`Memory Alert Threshold: ${THRESHOLDS.MEMORY_PERCENT}%\n`);
 
+        await sendWebhookAlert("🚀 Docker Monitor Started", 0x00FF00);
+
         while (true) {
-            console.clear(); // Clear console for better readability
             const containers = await getRunningContainers();
             for (const container of containers) {
                 await getStats(container.id);
@@ -99,11 +150,13 @@ async function main() {
         }
     } catch (error) {
         console.error('Fatal error in main loop:', error);
+        await sendWebhookAlert(`💀 Fatal Error: ${error.message}`, 0xFF0000);
         process.exit(1);
     }
 }
 
-main().catch(error => {
+main().catch(async error => {
     console.error('Application crashed:', error);
+    await sendWebhookAlert(`💀 Application Crashed: ${error.message}`, 0xFF0000);
     process.exit(1);
 });

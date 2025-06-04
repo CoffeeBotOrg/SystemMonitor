@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/CoffeeBotOrg/SystemMonitor#readme",
   "dependencies": {
-    "dockerode": "^3.3.5"
+    "dockerode": "^3.3.5",
+    "node-fetch": "^3.3.2"
   }
 }

@@ -1,0 +1,10 @@
+{
+    "webhooks": [
+        {
+            "1": "Discord Webhook 1"
+        },
+        {
+            "2": "Discord Webhook 2"
+        }
+    ]
+}
